@@ -17,13 +17,13 @@
 use bft::Step;
 use bincode::{deserialize, serialize, Infinite};
 use crypto::{pubkey_to_address, Sign, Signature};
+use crypto_hash::{digest, Algorithm};
 use ethereum_types::{Address, H256};
 use lru_cache::LruCache;
 use serde_derive::{Deserialize, Serialize};
 use util::datapath::DataPath;
 use util::Hashable;
 use CryptHash;
-use crypto_hash::{Algorithm, digest};
 
 use std::collections::HashMap;
 use std::fs::File;
@@ -264,8 +264,22 @@ impl ProposalRoundCollector {
 #[derive(Clone, Debug, Default)]
 pub struct Proposal {
     pub block: Vec<u8>,
+    pub height: usize,
+    pub round: usize,
     pub lock_round: Option<usize>,
     pub lock_votes: Option<VoteSet>,
+}
+
+impl Proposal {
+    pub fn new() -> Self {
+        Proposal {
+            block: Vec::new(),
+            height: MAX,
+            round: MAX,
+            lock_round: None,
+            lock_votes: None,
+        }
+    }
 }
 
 impl CryptHash for Proposal {
@@ -381,4 +395,13 @@ impl BftProof {
             false
         })
     }
+}
+
+#[derive(Debug)]
+pub struct AuthorityManage {
+    pub authorities: Vec<Address>,
+    pub validators: Vec<Address>,
+    pub authorities_old: Vec<Address>,
+    pub validators_old: Vec<Address>,
+    pub height_old: usize,
 }
