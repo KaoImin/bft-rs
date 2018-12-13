@@ -140,14 +140,14 @@ impl Bft {
         let height = self.height;
         let round = self.round;
 
-        if authority_list.authorities.is_empty() {
+        if authority_list.proposers.is_empty() {
             warn!("There are no authorities");
             return false;
         }
 
         let proposer: &Address = authority_list
-            .authorities
-            .get((height + round) % authority_list.authorities.len())
+            .proposers
+            .get((height + round) % authority_list.proposers.len())
             .expect(
                 "There are validator_n() authorities; \
                  taking number modulo validator_n() gives number in validator_n() range; QED",
@@ -277,47 +277,37 @@ impl Bft {
     }
 
     // check lock
-    pub fn proc_proposal(&mut self) -> bool {
-        let height = self.height;
-        let round = self.round;
+    pub fn proc_proposal(&mut self, proposal: Proposal) {
+        let proposal_lock_round = proposal.lock_round;
 
-        if let Some(proposal) = self.proposal {
+        // try to unlock
+        if self.lock_round.is_some()
+            && proposal_lock_round.is_some()
+            && self.lock_round.unwrap() < proposal_lock_round.unwrap()
+            && proposal_lock_round.unwrap() < self.round
+        {
             trace!(
-                "proc proposal height {},round {} self {} {} ",
-                height,
-                round,
+                "unlock lock block: height {:?}, proposal {:?}",
                 self.height,
-                self.round
+                self.proposal
             );
-
-            let proposal_lock_round = self.proposals.lock_round;
-            if self.lock_round.is_some()
-                && proposal_lock_round.is_some()
-                && self.lock_round.unwrap() < proposal_lock_round.unwrap()
-                && proposal_lock_round.unwrap() < round
-            {
-                trace!(
-                    "unlock lock block: height {:?}, proposal {:?}",
-                    height,
-                    self.proposal
-                );
-                self.clean_save_info();
-            }
-            if self.lock_round.is_some() {
-                let locked_proposal = &self.lock_proposal.clone().unwrap();
-                self.proposal = Some(locked_proposal.crypt_hash());
-                trace!(
-                    "still have lock block {} locked round {} {:?}",
-                    self.height,
-                    self.lock_round.unwrap(),
-                    self.proposal.unwrap()
-                );
-            } else {
-                // self.lock_proposal = Some(proposal);
-            }
-            return true;
+            self.clean_save_info();
         }
-        false
+
+        // fail to unlock, then prevote it
+        if self.lock_round.is_some() {
+            self.proposal = Some(self.lock_proposal.clone().unwrap().crypt_hash());
+        } else {
+            // use the new proposal and lock it
+            self.proposal = Some(proposal.block.crypt_hash());
+            self.lock_proposal = Some(proposal);
+            debug!(
+                "save the proposal's hash: height {:?}, round {}, proposal {:?}",
+                self.height,
+                self.round,
+                self.proposal.unwrap()
+            );
+        }
     }
 
     // do prevote
@@ -585,15 +575,16 @@ impl Bft {
 
     // start a new round
     pub fn new_round(&mut self, height: usize, round: usize, authority_list: AuthorityManage) {
-        // if consensus success, goto next height, update authority list
         let height_now = self.height;
-
+        // height_now != height => consensus success in the height, then goto next height
         if height_now != height {
+            // clean lock info, update authority list
             self.clean_save_info();
             self.height = height;
             self.round = round;
             self.auth_manage = authority_list;
         } else {
+            // only update the round info
             self.round = round;
         }
         // wait for 3s ?
@@ -612,19 +603,8 @@ impl Bft {
         let _ = self.wal_log.save(height, LOG_TYPE_STATE, &message);
     }
 
-    pub fn proc_timeout(&mut self) {
-        let tn = &self.timer_notity.recv();
-        trace!(
-            "proc_timeout {:?} on height {}, round {}, step {:?}",
-            tn,
-            self.height,
-            self.round,
-            self.step
-        );
-    }
-
     #[inline]
-    fn above_threshold(&self, n: usize) -> bool {
+    pub fn above_threshold(&self, n: usize) -> bool {
         n * 3 > self.auth_manage.validators.len() * 2
     }
 
