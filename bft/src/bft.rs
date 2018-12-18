@@ -85,13 +85,13 @@ impl From<u8> for Step {
 }
 
 pub struct Bft {
-    timer_seter: Sender<TimeoutInfo>,
-    timer_notity: Receiver<TimeoutInfo>,
+    pub timer_seter: Sender<TimeoutInfo>,
+    pub timer_notity: Receiver<TimeoutInfo>,
 
-    params: BftParams,
-    height: usize,
-    round: usize,
-    step: Step,
+    pub params: BftParams,
+    pub height: usize,
+    pub round: usize,
+    pub step: Step,
     votes: VoteCollector,
     proposals: Proposal,
     proposal: Option<H256>,
@@ -100,7 +100,6 @@ pub struct Bft {
     lock_vote: Option<VoteSet>,
     wal_log: Wal,
     last_commit_round: Option<usize>,
-    htime: Instant,
     auth_manage: AuthorityManage,
 }
 
@@ -120,7 +119,7 @@ impl Bft {
             params,
             height: 0,
             round: INIT_ROUND,
-            step: Step::Propose,
+            step: Step::default(),
             votes: VoteCollector::new(),
             proposals: Proposal::new(),
             proposal: None,
@@ -129,7 +128,6 @@ impl Bft {
             lock_vote: None,
             wal_log: Wal::new(&*logpath).unwrap(),
             last_commit_round: None,
-            htime: Instant::now(),
             auth_manage: authority_list,
         }
     }
@@ -604,12 +602,17 @@ impl Bft {
     }
 
     #[inline]
+    pub fn is_validator(&self, address: &Address) -> bool {
+        self.auth_manage.validators.contains(address)
+    }
+
+    #[inline]
     pub fn above_threshold(&self, n: usize) -> bool {
         n * 3 > self.auth_manage.validators.len() * 2
     }
 
     #[inline]
-    fn all_vote(&self, n: usize) -> bool {
+    pub fn all_vote(&self, n: usize) -> bool {
         n == self.auth_manage.validators.len()
     }
 
