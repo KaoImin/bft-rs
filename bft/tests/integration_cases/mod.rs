@@ -15,28 +15,5 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-use algorithm::Step;
-use ethereum_types::H256;
-use voteset::{Proposal, ProposalwithProof, SignProposal};
-
-#[derive(Clone, Debug)]
-pub struct ProposalMessage {
-    pub height: usize,
-    pub round: usize,
-    pub proposal: SignProposal,
-}
-
-#[derive(Clone, Debug)]
-pub struct Message {
-    pub height: usize,
-    pub round: usize,
-    pub step: Step,
-    pub proposal: Option<H256>,
-}
-
-#[derive(Clone, Debug)]
-pub struct CommitMessage {
-    pub height: usize,
-    pub round: usize,
-    pub proposal: ProposalwithProof,
-}
+mod test_with_nil;
+mod test_without_proposer;

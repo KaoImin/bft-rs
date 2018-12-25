@@ -92,13 +92,13 @@ pub struct Bft {
     pub height: usize,
     pub round: usize,
     pub step: Step,
-    votes: VoteCollector,
+    pub votes: VoteCollector,
     proposals: ProposalCollector,
     proposal: Option<H256>,
     lock_round: Option<usize>,
     lock_proposal: Option<Proposal>,
     lock_vote: Option<VoteSet>,
-    wal_log: Wal,
+    // wal_log: Wal,
     last_commit_round: Option<usize>,
     auth_manage: AuthorityManage,
 }
@@ -110,14 +110,14 @@ impl Bft {
         params: BftParams,
         authority_list: AuthorityManage,
     ) -> Bft {
-        let logpath = DataPath::wal_path();
+        // let logpath = DataPath::wal_path();
 
         Bft {
             timer_seter: ts,
             timer_notity: rs,
 
             params,
-            height: 0,
+            height: INIT_HEIGHT,
             round: INIT_ROUND,
             step: Step::default(),
             votes: VoteCollector::new(),
@@ -126,7 +126,7 @@ impl Bft {
             lock_round: None,
             lock_proposal: None,
             lock_vote: None,
-            wal_log: Wal::new(&*logpath).unwrap(),
+            // wal_log: Wal::new(&*logpath).unwrap(),
             last_commit_round: None,
             auth_manage: authority_list,
         }
@@ -239,8 +239,9 @@ impl Bft {
                 "add proposal height {} round {}",
                 proposal_height, proposal_round
             );
-            
-            self.proposals.add(proposal_height, proposal_height, proposal);
+
+            self.proposals
+                .add(proposal_height, proposal_height, proposal);
             return Ok((proposal_height, proposal_round));
         }
         Err(EngineError::UnexpectedMessage)
@@ -269,7 +270,7 @@ impl Bft {
             self.proposal = Some(self.lock_proposal.clone().unwrap().crypt_hash());
         } else {
             // use the new proposal and lock it
-            self.proposal = Some(proposal.block.crypt_hash());
+            self.proposal = Some(proposal.crypt_hash());
             self.lock_proposal = Some(proposal);
             debug!(
                 "save the proposal's hash: height {:?}, round {}, proposal {:?}",
@@ -531,9 +532,11 @@ impl Bft {
             self.height = height;
             self.round = round;
             self.auth_manage = authority_list;
+            trace!("Consensus successful, go to new height{} .", self.height);
         } else {
             // only update the round info
             self.round = round;
+            trace!("Consensus unsuccessful, go to new round{} .", self.round);
         }
         // wait for 3s ?
     }
@@ -544,11 +547,11 @@ impl Bft {
         self.step = s;
 
         if newflag {
-            let _ = self.wal_log.set_height(height);
+            // let _ = self.wal_log.set_height(height);
         }
 
         let message = serialize(&(height, round, s), Infinite).unwrap();
-        let _ = self.wal_log.save(height, LOG_TYPE_STATE, &message);
+        // let _ = self.wal_log.save(height, LOG_TYPE_STATE, &message);
     }
 
     #[inline]
