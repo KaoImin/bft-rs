@@ -14,9 +14,14 @@
 
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+//! An efficent and stable Rust library of BFT protocol for distributed system.
+//!
+//!
+
+#![deny(missing_docs)]
 #![allow(unused_imports)]
 #![allow(unused_results)]
-#![feature(try_from)]
 
 #[macro_use]
 extern crate bincode;
@@ -30,78 +35,96 @@ extern crate min_max_heap;
 #[macro_use]
 extern crate serde_derive;
 
-pub mod algorithm;
-pub mod params;
-pub mod timer;
-pub mod voteset;
-pub mod wal;
+use algorithm::Step;
 
+/// BFT state machine.
+pub mod algorithm;
+/// BFT params include time interval and local address.
+pub mod params;
+/// BFT timer.
+pub mod timer;
+/// BFT vote set.
+pub mod voteset;
+
+/// The type for node address.
 pub type Address = Vec<u8>;
+/// The type for proposal.
 pub type Target = Vec<u8>;
 
+/// BFT message.
 #[derive(Clone, Debug)]
-pub enum MsgType {
-    Proposal,
-    Vote,
-    Feed,
-    RichStatus,
-    Commit,
+pub enum BftMsg {
+    /// Proposal message.
+    Proposal(Proposal),
+    /// Vote message.
+    Vote(Vote),
+    /// Feed messge, this is the proposal of the height.
+    Feed(Feed),
+    /// Status message, rich status.
+    Status(Status),
+    /// Commit message.
+    Commit(Commit),
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, PartialOrd, Eq, Copy, Hash)]
-pub enum VoteType {
-    Prevote = 0,
-    PreCommit = 1,
-}
-
+/// Something need to be consensus in a round.
+/// A `Proposal` includes `height`, `round`, `content`, `lock_round`, `lock_votes`
+/// and `proposer`. `lock_round` and `lock_votes` are `Option`, means the PoLC of
+/// the proposal. Therefore, these must have same variant of `Option`.
 #[derive(Clone, Debug)]
-pub struct BftMsg {
-    msg: Vec<u8>,
-    msg_type: MsgType,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Proposal {
     height: usize,
     round: usize,
-    content: Target, // block hash
+    content: Target,
     lock_round: Option<usize>,
     lock_votes: Option<Vec<Vote>>,
     proposer: Address,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+/// A PoLC.
+#[derive(Clone, Debug)]
 pub struct LockStatus {
-    proposal: Target, // block hash
+    proposal: Target,
     round: usize,
     votes: Vec<Vote>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+/// A vote to a proposal.
+#[derive(Clone, Debug)]
 pub struct Vote {
-    vote_type: VoteType,
+    vote_type: Step,
     height: usize,
     round: usize,
-    proposal: Target, // block hash
+    proposal: Target,
     voter: Address,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+/// A proposal for a height.
+#[derive(Clone, Debug)]
 pub struct Feed {
-    height: usize,
-    proposal: Target, // block hash
+    /// The height of the proposal.
+    pub height: usize,
+    /// A proposal.
+    pub proposal: Target,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+/// A result of a height.
+#[derive(Clone, Debug)]
 pub struct Commit {
-    height: usize,
-    proposal: Target, // block hash
-    lock_votes: Vec<Vote>,
+    /// The height of result.
+    pub height: usize,
+    /// Consensus result
+    pub proposal: Target,
+    /// Vote for generate proof.
+    pub lock_votes: Vec<Vote>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct RichStatus {
-    height: usize,
-    interval: Option<u64>,
-    authority_list: Vec<Address>,
+/// Necessary messages for a height.
+#[derive(Clone, Debug)]
+pub struct Status {
+    /// The height of rich status.
+    pub height: usize,
+    /// The time interval of next height. If it is none, maintain the old interval.
+    pub interval: Option<u64>,
+    /// A new authority list for next height.
+    pub authority_list: Vec<Address>,
 }

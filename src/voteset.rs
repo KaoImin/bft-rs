@@ -14,35 +14,64 @@
 
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
-use super::{Address, Target, VoteType};
-use bincode::{deserialize, serialize, Infinite};
+use super::{Address, Target, Vote};
+use algorithm::Step;
 use lru_cache::LruCache;
-use serde_derive::{Deserialize, Serialize};
 
 use std::collections::HashMap;
-use std::io::prelude::*;
 
+/// BFT vote collector
 #[derive(Debug)]
 pub struct VoteCollector {
+    /// A LruCache to store vote collect of each round.
     pub votes: LruCache<usize, RoundCollector>,
+    /// A HashMap to record prevote count of each round.
+    pub prevote_count: HashMap<usize, usize>,
 }
 
 impl VoteCollector {
+    /// A function to create a new BFT vote collector.
     pub fn new() -> Self {
         VoteCollector {
-            votes: LruCache::new(4),
+            votes: LruCache::new(16),
+            prevote_count: HashMap::new(),
         }
     }
 
-    pub fn add(
-        &mut self,
-        height: usize,
-        round: usize,
-        vote_type: VoteType,
-        sender: Address,
-        vote: Target,
-    ) -> bool {
-        if self.votes.contains_key(&height) {
+    /// A function try to add a vote, return `bool`.
+    pub fn add(&mut self, vote: Vote) -> bool {
+        let height = vote.height;
+        let round = vote.round;
+        let vote_type = vote.vote_type;
+        let sender = vote.voter;
+        let vote = vote.proposal;
+
+        if vote_type == Step::Prevote {
+            if self.votes.contains_key(&height) {
+                if self
+                    .votes
+                    .get_mut(&height)
+                    .unwrap()
+                    .add(round, vote_type, sender, vote)
+                {
+                    // update prevote count hashmap
+                    let counter = self.prevote_count.entry(round).or_insert(0);
+                    *counter += 1;
+                    true
+                } else {
+                    // if add prevote fail, do not update prevote hashmap
+                    false
+                }
+            } else {
+                let mut round_votes = RoundCollector::new();
+                round_votes.add(round, vote_type, sender, vote);
+                self.votes.insert(height, round_votes);
+                // update prevote count hashmap
+                let counter = self.prevote_count.entry(round).or_insert(0);
+                *counter += 1;
+                true
+            }
+        } else if self.votes.contains_key(&height) {
             self.votes
                 .get_mut(&height)
                 .unwrap()
@@ -55,27 +84,33 @@ impl VoteCollector {
         }
     }
 
-    pub fn get_voteset(
-        &mut self,
-        height: usize,
-        round: usize,
-        vote_type: VoteType,
-    ) -> Option<VoteSet> {
+    /// A function to get the vote set of the height, the round, and the vote type.
+    pub fn get_voteset(&mut self, height: usize, round: usize, vote_type: Step) -> Option<VoteSet> {
         self.votes
             .get_mut(&height)
             .and_then(|rc| rc.get_voteset(round, vote_type))
     }
+
+    /// A function to clean prevote count HashMap at the begining of a height.
+    pub fn clear_prevote_count(&mut self) {
+        self.prevote_count.clear();
+    }
 }
 
-//1. sender's votemessage 2. proposal'hash count
+/// BFT vote set
+// 1. sender's vote message  2. proposal's hash  3. count
 #[derive(Clone, Debug)]
 pub struct VoteSet {
+    /// A HashMap that K is voter, V is proposal.
     pub votes_by_sender: HashMap<Address, Target>,
+    /// A HashMap that K is proposal V is count of the proposal.
     pub votes_by_proposal: HashMap<Target, usize>,
+    /// Count of vote set.
     pub count: usize,
 }
 
 impl VoteSet {
+    /// A function to create a new vote set.
     pub fn new() -> Self {
         VoteSet {
             votes_by_sender: HashMap::new(),
@@ -84,7 +119,7 @@ impl VoteSet {
         }
     }
 
-    //just add ,not check
+    /// A function to add a vote to the vote set.
     pub fn add(&mut self, sender: Address, vote: Target) -> bool {
         let mut is_add = false;
         self.votes_by_sender.entry(sender).or_insert_with(|| {
@@ -97,28 +132,50 @@ impl VoteSet {
         }
         is_add
     }
+
+    /// A function to abstract the PoLC of the round.
+    pub fn abstract_polc(
+        &self,
+        height: usize,
+        round: usize,
+        vote_type: Step,
+        proposal: &Target,
+    ) -> Vec<Vote> {
+        // abstract the votes for the polc proposal into a vec
+        let mut polc = Vec::new();
+        for (address, vote_proposal) in &self.votes_by_sender {
+            if vote_proposal == proposal {
+                polc.push(Vote {
+                    vote_type,
+                    height,
+                    round,
+                    proposal: proposal.clone(),
+                    voter: address.clone(),
+                });
+            }
+        }
+        polc
+    }
 }
 
-//round -> step collector
+/// BFT round vote collector.
+// round -> step collector
 #[derive(Debug)]
 pub struct RoundCollector {
+    /// A LruCache to store step collect of a round.
     pub round_votes: LruCache<usize, StepCollector>,
 }
 
 impl RoundCollector {
+    /// A function to create a new round collector.
     pub fn new() -> Self {
         RoundCollector {
             round_votes: LruCache::new(16),
         }
     }
 
-    pub fn add(
-        &mut self,
-        round: usize,
-        vote_type: VoteType,
-        sender: Address,
-        vote: Target,
-    ) -> bool {
+    /// A function try to add a vote to a round collector.
+    pub fn add(&mut self, round: usize, vote_type: Step, sender: Address, vote: Target) -> bool {
         if self.round_votes.contains_key(&round) {
             self.round_votes
                 .get_mut(&round)
@@ -132,34 +189,40 @@ impl RoundCollector {
         }
     }
 
-    pub fn get_voteset(&mut self, round: usize, vote_type: VoteType) -> Option<VoteSet> {
+    /// A functionto get the vote set of the round, and the vote type.
+    pub fn get_voteset(&mut self, round: usize, vote_type: Step) -> Option<VoteSet> {
         self.round_votes
             .get_mut(&round)
             .and_then(|sc| sc.get_voteset(vote_type))
     }
 }
 
-//step -> voteset
-#[derive(Debug)]
+/// BFT step collector.
+// step -> voteset
+#[derive(Debug, Default)]
 pub struct StepCollector {
-    pub step_votes: HashMap<VoteType, VoteSet>,
+    /// A HashMap that K is step, V is the vote set
+    pub step_votes: HashMap<Step, VoteSet>,
 }
 
 impl StepCollector {
+    /// A function to create a new step collector.
     pub fn new() -> Self {
         StepCollector {
             step_votes: HashMap::new(),
         }
     }
 
-    pub fn add(&mut self, vote_type: VoteType, sender: Address, vote: Target) -> bool {
+    /// A function to add a vote to the step collector.
+    pub fn add(&mut self, vote_type: Step, sender: Address, vote: Target) -> bool {
         self.step_votes
             .entry(vote_type)
             .or_insert_with(VoteSet::new)
             .add(sender, vote)
     }
 
-    pub fn get_voteset(&self, vote_type: VoteType) -> Option<VoteSet> {
+    /// A function to get voteset of the vote type
+    pub fn get_voteset(&self, vote_type: Step) -> Option<VoteSet> {
         self.step_votes.get(&vote_type).cloned()
     }
 }
