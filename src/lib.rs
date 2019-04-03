@@ -13,7 +13,6 @@ extern crate min_max_heap;
 extern crate rand;
 extern crate rand_core;
 extern crate rand_pcg;
-extern crate rlp;
 #[macro_use]
 extern crate serde_derive;
 
@@ -248,22 +247,6 @@ impl Node {
     }
 }
 
-/// A signed proposal.
-pub struct SignedProposal<T: Crypto> {
-    /// Bft proposal.
-    pub proposal: Proposal,
-    /// Proposal signature.
-    pub signature: T::Signature,
-}
-
-/// A signed vote.
-pub struct SignedVote<T: Crypto> {
-    /// Bft Vote.
-    pub vote: Vote,
-    /// Vote signature.
-    pub signature: T::Signature,
-}
-
 ///
 pub trait BftSupport {
     /// A function to check signature.
@@ -278,20 +261,4 @@ pub trait BftSupport {
     /// A function to get verify result.
     #[cfg(feature = "verify_req")]
     fn verify_transcation(&self, p: Target) -> Result<bool, BftError>;
-}
-
-///
-pub trait Crypto {
-    /// Hash type
-    type Hash;
-    /// Signature types
-    type Signature: Crypto;
-    /// A function to get signature.
-    fn get_signature(&self) -> Self::Signature;
-    /// A function to encrypt hash.
-    fn hash(&self, msg: Vec<u8>) -> Self::Hash;
-    /// A function to check signature
-    fn check_signature(&self, hash: &Self::Hash, sig: &Self::Signature) -> Result<(), BftError>;
-    /// A function to signature the message hash.
-    fn signature(&self, hash: &Self::Hash, privkey: &[u8]) -> Self::Signature;
 }
