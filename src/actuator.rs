@@ -12,21 +12,22 @@ pub type Result<T> = ::std::result::Result<T, BftError>;
 /// A Bft Actuator
 pub struct BftActuator {
     sender: Sender<BftMsg>,
-    receiver: Receiver<BftMsg>,
     height: u64,
 }
 
 impl BftActuator {
     /// A function to create a new Bft actuator.
-    pub fn new(address: Address) -> Self {
+    pub fn start(address: Address) -> (Self, Receiver<BftMsg>) {
         let (sender, internal_receiver) = unbounded();
         let (internal_sender, receiver) = unbounded();
         Bft::start(internal_sender, internal_receiver, address);
-        Self {
-            sender,
+        (
+            Self {
+                sender,
+                height: INIT_HEIGHT,
+            },
             receiver,
-            height: INIT_HEIGHT,
-        }
+        )
     }
 
     /// A function to send proposal to Bft.
@@ -127,19 +128,6 @@ impl BftActuator {
         })
     }
 
-    /// A function to receive a Bft message via actuator.
-    pub fn recv(&self) -> Result<BftMsg> {
-        self.receiver
-            .recv()
-            .map_err(|_| BftError::RecvMsgErr)
-            .and_then(|msg| match msg {
-                BftMsg::Proposal(p) => Ok(BftMsg::Proposal(p)),
-                BftMsg::Vote(v) => Ok(BftMsg::Vote(v)),
-                BftMsg::Commit(c) => Ok(BftMsg::Commit(c)),
-                _ => Err(BftError::Unreachable),
-            })
-    }
-
     /// A function to get Bft machine height.
     pub fn get_height(&self) -> u64 {
         self.height
@@ -199,7 +187,7 @@ mod test {
 
     #[test]
     fn test_send_proposal() {
-        let actuator = Bft::new(vec![1]);
+        let (actuator, _) = Bft::start(vec![1]);
         let msg = generate_msg();
 
         for msg_index in 0..6 {
@@ -214,7 +202,7 @@ mod test {
 
     #[test]
     fn test_send_vote() {
-        let actuator = Bft::new(vec![1]);
+        let (actuator, _) = Bft::start(vec![1]);
         let msg = generate_msg();
 
         for msg_index in 0..6 {
@@ -229,7 +217,7 @@ mod test {
 
     #[test]
     fn test_send_feed() {
-        let actuator = Bft::new(vec![1]);
+        let (actuator, _) = Bft::start(vec![1]);
         let msg = generate_msg();
 
         for msg_index in 0..6 {
@@ -244,7 +232,7 @@ mod test {
 
     #[test]
     fn test_send_status() {
-        let mut actuator = Bft::new(vec![1]);
+        let (mut actuator, _) = Bft::start(vec![1]);
         let msg = generate_msg();
 
         for msg_index in 0..3 {
@@ -259,7 +247,7 @@ mod test {
 
     #[test]
     fn test_send_pause() {
-        let actuator = Bft::new(vec![1]);
+        let (actuator, _) = Bft::start(vec![1]);
         let msg = generate_msg();
 
         for msg_index in 0..6 {
@@ -274,7 +262,7 @@ mod test {
 
     #[test]
     fn test_send_start() {
-        let actuator = Bft::new(vec![1]);
+        let (actuator, _) = Bft::start(vec![1]);
         let msg = generate_msg();
 
         for msg_index in 0..6 {
@@ -290,7 +278,7 @@ mod test {
     #[test]
     fn test_height_change() {
         let height: Vec<(u64, u64)> = vec![(1, 2), (2, 3), (1, 3), (4, 5), (6, 7), (5, 7)];
-        let mut actuator = Bft::new(vec![1]);
+        let (mut actuator, _) = Bft::start(vec![1]);
         assert_eq!(actuator.get_height(), 0);
 
         for h in height.into_iter() {
