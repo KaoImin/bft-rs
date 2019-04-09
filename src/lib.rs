@@ -11,8 +11,12 @@ extern crate crossbeam;
 extern crate log;
 extern crate lru_cache;
 extern crate min_max_heap;
+extern crate rustc_serialize;
 #[macro_use]
 extern crate serde_derive;
+
+use rustc_serialize::json::{Json, ToJson};
+use std::collections::BTreeMap;
 
 /// Bft actuator.
 pub mod actuator;
@@ -63,6 +67,23 @@ pub enum VoteType {
     Precommit,
 }
 
+impl ToJson for VoteType {
+    fn to_json(&self) -> Json {
+        let mut d = BTreeMap::new();
+        let t: u8;
+        match self {
+            VoteType::Prevote => t = 0,
+            VoteType::Precommit => t = 1,
+        }
+        if t == 0 {
+            d.insert("Prevote".to_string(), t.to_json());
+        } else {
+            d.insert("Precommit".to_string(), t.to_json());
+        }
+        Json::Object(d)
+    }
+}
+
 /// Something need to be consensus in a round.
 /// A `Proposal` includes `height`, `round`, `content`, `lock_round`, `lock_votes`
 /// and `proposer`. `lock_round` and `lock_votes` are `Option`, means the PoLC of
@@ -81,6 +102,19 @@ pub struct Proposal {
     pub lock_votes: Option<Vec<Vote>>,
     /// The address of proposer.
     pub proposer: Address,
+}
+
+impl ToJson for Proposal {
+    fn to_json(&self) -> Json {
+        let mut d = BTreeMap::new();
+        d.insert("height".to_string(), self.height.to_json());
+        d.insert("round".to_string(), self.round.to_json());
+        d.insert("hash".to_string(), self.content.to_json());
+        d.insert("lock round".to_string(), self.lock_round.to_json());
+        d.insert("lock votes".to_string(), self.lock_votes.to_json());
+        d.insert("proposer".to_string(), self.proposer.to_json());
+        Json::Object(d)
+    }
 }
 
 /// A PoLC.
@@ -109,6 +143,18 @@ pub struct Vote {
     pub voter: Address,
 }
 
+impl ToJson for Vote {
+    fn to_json(&self) -> Json {
+        let mut d = BTreeMap::new();
+        d.insert("vote type".to_string(), self.vote_type.to_json());
+        d.insert("height".to_string(), self.height.to_json());
+        d.insert("round".to_string(), self.round.to_json());
+        d.insert("proposal".to_string(), self.proposal.to_json());
+        d.insert("voter".to_string(), self.voter.to_json());
+        Json::Object(d)
+    }
+}
+
 /// A proposal for a height.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct Feed {
@@ -131,6 +177,18 @@ pub struct Commit {
     pub lock_votes: Vec<Vote>,
     /// The node address.
     pub address: Address,
+}
+
+impl ToJson for Commit {
+    fn to_json(&self) -> Json {
+        let mut d = BTreeMap::new();
+        d.insert("height".to_string(), self.height.to_json());
+        d.insert("round".to_string(), self.round.to_json());
+        d.insert("proposal".to_string(), self.proposal.to_json());
+        d.insert("lock votes".to_string(), self.lock_votes.to_json());
+        d.insert("address".to_string(), self.address.to_json());
+        Json::Object(d)
+    }
 }
 
 /// Necessary messages for a height.
